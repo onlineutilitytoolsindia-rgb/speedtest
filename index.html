@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Speedtest - Internet Speed Test</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
   <nav class="navbar">
@@ -14,14 +14,14 @@
       <a href="#">Learn</a>
       <a href="#">Apps</a>
       <a href="#">Help</a>
-      <a href="#" onclick="alert('Login feature coming soon.')">Log In</a>
+      <a href="#" id="loginLink">Log In</a>
     </div>
   </nav>
 
   <main class="container">
     <div class="server-selector">
       <label for="serverSelect">Server:</label>
-      <select id="serverSelect" onchange="selectServer()">
+      <select id="serverSelect">
         <option value="nyc">New York, USA</option>
         <option value="lon">London, UK</option>
         <option value="fra">Frankfurt, DE</option>
@@ -35,20 +35,12 @@
     </div>
 
     <div class="gauge-wrapper">
-      <!-- Status pills -->
-      <div class="status-row" id="statusRow" style="display:none;">
-        <span class="status-pill status-ping">PING</span>
-        <span class="status-pill status-dl">DOWNLOAD</span>
-        <span class="status-pill status-ul">UPLOAD</span>
-      </div>
-
       <div class="spinner-ring" id="spinnerRing" style="opacity: 0;">
         <svg viewBox="0 0 120 120" class="spinnerSvg">
           <circle cx="60" cy="60" r="54" fill="none" stroke="#4e0eff" stroke-width="6" stroke-dasharray="40 12" stroke-linecap="round" />
         </svg>
       </div>
 
-      <!-- Gauge -->
       <svg class="gauge" viewBox="0 0 300 260" id="gauge">
         <circle cx="150" cy="150" r="120" fill="none" stroke="#2a2a3e" stroke-width="24"
           stroke-dasharray="565" stroke-dashoffset="0"
@@ -69,11 +61,11 @@
       </div>
     </div>
 
-    <button class="go-btn" id="goBtn" onclick="startTest()">GO</button>
+    <button class="go-btn" id="goBtn">GO</button>
 
-    <button class="gear-btn" onclick="toggleSettings()" aria-label="Settings">&#9881;</button>
+    <button class="gear-btn" id="gearBtn" aria-label="Settings">&#9881;</button>
 
-    <button class="history-btn" onclick="toggleHistory()">Results History</button>
+    <button class="history-btn" id="historyBtn">Results History</button>
 
     <div class="results" id="results" style="display: none;">
       <div class="result-item">
@@ -90,14 +82,12 @@
       </div>
     </div>
 
-    <!-- History panel -->
     <div class="history-panel" id="historyPanel" style="display: none;">
       <h3>Recent Tests</h3>
       <div id="historyList" class="history-list"></div>
-      <button class="clear-history" onclick="clearHistory()">Clear History</button>
+      <button class="clear-history" id="clearHistoryBtn">Clear History</button>
     </div>
 
-    <!-- Settings panel -->
     <div class="settings-panel" id="settingsPanel" style="display: none;">
       <h3>Settings</h3>
       <div class="setting-row">
@@ -110,12 +100,9 @@
       <p class="setting-desc">Multi uses multiple streams for maximum speed. Single is best for VPN or single-stream testing.</p>
     </div>
 
-    <!-- Global Index -->
     <section class="global-index" id="global-index">
       <h2>Speedtest Global Index</h2>
-      <div class="index-grid" id="indexGrid">
-        <!-- Populated by JS -->
-      </div>
+      <div class="index-grid" id="indexGrid"></div>
     </section>
   </main>
 
@@ -134,6 +121,6 @@
     </div>
   </footer>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>
