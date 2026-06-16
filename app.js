@@ -326,4 +326,10 @@
   selectServer();
   buildGlobalIndex();
   renderHistory();
+
+  window.startTest = startTest;
+  window.toggleSettings = toggleSettings;
+  window.toggleHistory = toggleHistory;
+  window.clearHistory = clearHistory;
+  window.selectServer = selectServer;
 })();
