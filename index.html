@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Speedtest - Internet Speed Test</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <div class="logo">SPEEDTEST</div>
+    <div class="nav-links">
+      <a href="#global-index">Global Index</a>
+      <a href="#learn">Learn</a>
+      <a href="#apps">Apps</a>
+      <a href="#help">Help</a>
+      <a href="#" onclick="alert('Login feature coming soon.')">Log In</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <div class="server-selector">
+      <label for="serverSelect">Server:</label>
+      <select id="serverSelect" onchange="selectServer()">
+        <option value="nyc">New York, USA</option>
+        <option value="lon">London, UK</option>
+        <option value="fra">Frankfurt, DE</option>
+        <option value="sg">Singapore, SG</option>
+        <option value="syd">Sydney, AU</option>
+        <option value="tok">Tokyo, JP</option>
+      </select>
+      <div class="server-info">
+        <span id="serverName">New York, USA</span> · <span id="serverDist">1,204 km · 7.5 ms prop.</span>
+      </div>
+    </div>
+
+    <div class="gauge-wrapper">
+      <!-- Outer spinner ring -->
+      <div class="spinner-ring" id="spinnerRing" style="opacity: 0;">
+        <svg viewBox="0 0 120 120" class="spinnerSvg">
+          <circle cx="60" cy="60" r="54" fill="none" stroke="#4e0eff" stroke-width="6" stroke-dasharray="40 12" stroke-linecap="round" />
+        </svg>
+      </div>
+
+      <!-- Gauge -->
+      <svg class="gauge" viewBox="0 0 300 260" id="gauge">
+        <circle cx="150" cy="150" r="120" fill="none" stroke="#2a2a3e" stroke-width="24"
+          stroke-dasharray="565" stroke-dashoffset="0"
+          transform="rotate(135 150 150)" stroke-linecap="round" />
+        <circle cx="150" cy="150" r="120" fill="none" stroke="#4e0eff" stroke-width="24"
+          stroke-dasharray="565" stroke-dashoffset="565"
+          transform="rotate(135 150 150)" stroke-linecap="round" id="gaugeArc" />
+        <g id="ticks"></g>
+        <line id="needle" x1="150" y1="150" x2="150" y2="50" stroke="#ff3b5c" stroke-width="3"
+          stroke-linecap="round" />
+        <circle cx="150" cy="150" r="8" fill="#fff" />
+      </svg>
+
+      <div class="center-display">
+        <div class="speed-value" id="speedValue">0.00</div>
+        <div class="speed-unit">Mbps</div>
+        <div class="test-label" id="testLabel">READY</div>
+      </div>
+    </div>
+
+    <button class="go-btn" id="goBtn" onclick="startTest()">GO</button>
+
+    <button class="gear-btn" onclick="toggleSettings()" aria-label="Settings">&#9881;</button>
+
+    <button class="history-btn" onclick="toggleHistory()">Results History</button>
+
+    <div class="results" id="results" style="display: none;">
+      <div class="result-item">
+        <div class="result-label">Ping</div>
+        <div class="result-value"><span id="pingValue">-</span> ms</div>
+      </div>
+      <div class="result-item">
+        <div class="result-label">Download</div>
+        <div class="result-value"><span id="dlValue">-</span> Mbps</div>
+      </div>
+      <div class="result-item">
+        <div class="result-label">Upload</div>
+        <div class="result-value"><span id="ulValue">-</span> Mbps</div>
+      </div>
+    </div>
+
+    <!-- History panel -->
+    <div class="history-panel" id="historyPanel" style="display: none;">
+      <h3>Recent Tests</h3>
+      <div id="historyList" class="history-list"></div>
+      <button class="clear-history" onclick="clearHistory()">Clear History</button>
+    </div>
+
+    <!-- Settings panel -->
+    <div class="settings-panel" id="settingsPanel" style="display: none;">
+      <h3>Settings</h3>
+      <div class="setting-row">
+        <label>Connection type:</label>
+        <select id="connType">
+          <option value="multi">Multi</option>
+          <option value="single">Single</option>
+        </select>
+      </div>
+      <p class="setting-desc">Multi uses multiple streams for maximum speed. Single is best for VPN or single-stream testing.</p>
+    </div>
+
+    <!-- Global Index -->
+    <section class="global-index" id="global-index">
+      <h2>Speedtest Global Index</h2>
+      <div class="index-grid" id="indexGrid">
+        <!-- Populated by JS -->
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-brand">
+      <span class="footer-logo">SPEEDTEST</span>
+      <span>&copy; 2026 Speedtest Clone</span>
+    </div>
+    <div class="footer-links">
+      <a href="#">Account</a>
+      <a href="#">Advertise</a>
+      <a href="#">Speedtest Awards&trade;</a>
+      <a href="#">Speedtest Servers&trade;</a>
+      <a href="#">Performance Directory&trade;</a>
+      <a href="#">Privacy Policy</a>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
