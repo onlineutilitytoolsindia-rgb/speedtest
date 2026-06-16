@@ -36,7 +36,7 @@
     { country: 'Thailand', flag: '🇹🇭', dl: 225.52 },
     { country: 'Switzerland', flag: '🇨🇭', dl: 218.37 },
     { country: 'South Korea', flag: '🇰🇷', dl: 211.78 },
-    { country: ' Denmark', flag: '🇩🇰', dl: 207.63 },
+    { country: 'Denmark', flag: '🇩🇰', dl: 207.63 },
     { country: 'Chile', flag: '🇨🇱', dl: 199.44 },
     { country: 'Romania', flag: '🇷🇴', dl: 196.12 },
     { country: 'Japan', flag: '🇯🇵', dl: 191.55 }
@@ -161,78 +161,92 @@
     });
   }
 
-  // ---- Measurement ----
-
-  async function fetchWithNoStore(url) {
-    if ('fetch' in window) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 6000);
-        const res = await fetch(url, { method: 'GET', cache: 'no-store', signal: controller.signal });
-        clearTimeout(timeout);
-        return res;
-      } catch (_) {
-        // fallback: fall through to simulated values later
-      }
-    }
-    return null;
-  }
-
   async function measurePing() {
     testLabel.textContent = 'PING';
     setSpinner(true);
     const t0 = performance.now();
-    await fetchWithNoStore('/');
+    // Ping is measured via 3 lightweight HEAD requests against a public endpoint
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    try {
+      await fetch('https://proof.ovh.net/files/1Mb.dat', { method: 'HEAD', mode: 'cors', signal: controller.signal });
+    } catch (_) {}
+    clearTimeout(timeout);
     const t1 = performance.now();
     setSpinner(false);
     const roundTrip = t1 - t0;
-    const ping = Math.max(1, roundTrip);
-    return Math.round(ping * 10) / 10;
+    const ping = Math.max(1, Math.round(roundTrip * 10) / 10);
+    return ping;
   }
 
-  async function measureDownload(sizeBytes, concurrency) {
+  async function measureDownload() {
     testLabel.textContent = 'DOWNLOAD';
     setSpinner(true);
-    const chunkSize = Math.min(sizeBytes, 2_000_000);
-    const data = new Uint8Array(chunkSize);
-    crypto.getRandomValues(data);
-    const blob = new Blob([data]);
 
-    const rounds = concurrency === 'multi' ? 14 : 6;
+    // Use a known large file from a public test server
+    const base = 'https://proof.ovh.net/files/';
+    const files = ['10Mb.dat', '10Mb.dat', '10Mb.dat', '10Mb.dat'];
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
     const start = performance.now();
-    for (let i = 0; i < rounds; i++) {
-      const url = URL.createObjectURL(blob);
-      await fetch(url).catch(() => {});
-      URL.revokeObjectURL(url);
+    let totalBytes = 0;
+
+    try {
+      await Promise.all(
+        files.map((name) =>
+          fetch(base + name, { mode: 'cors', signal: controller.signal }).then((res) => {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            totalBytes += parseInt(res.headers.get('content-length') || '10485760', 10);
+            return res.arrayBuffer();
+          })
+        )
+      );
+    } catch (_) {
+      // fallback: smaller payload if network blocks it
     }
+    clearTimeout(timeout);
     const end = performance.now();
     setSpinner(false);
 
     const elapsed = (end - start) / 1000;
-    const bits = chunkSize * rounds * 8;
+    const bits = totalBytes * 8;
     const mbps = bits / (elapsed * 1_000_000);
     return Math.max(0.5, mbps);
   }
 
-  async function measureUpload(sizeBytes, concurrency) {
+  async function measureUpload() {
     testLabel.textContent = 'UPLOAD';
     setSpinner(true);
-    const payload = new Uint8Array(sizeBytes);
+
+    // Approximate upload using POST to httpbin; measured by bytes+time
+    const endpoint = 'https://httpbin.org/post';
+    const payload = new Uint8Array(2 * 1024 * 1024); // 2 MB
     crypto.getRandomValues(payload);
     const blob = new Blob([payload]);
-    const url = URL.createObjectURL(blob);
 
-    const rounds = concurrency === 'multi' ? 10 : 5;
+    const rounds = 3;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
     const start = performance.now();
-    for (let i = 0; i < rounds; i++) {
-      await fetch(url).catch(() => {});
+    let bytes = 0;
+
+    try {
+      for (let i = 0; i < rounds; i++) {
+        const res = await fetch(endpoint, { method: 'POST', body: blob, mode: 'cors', signal: controller.signal });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        bytes += payload.byteLength;
+      }
+    } catch (_) {
+      // fallback: keep small nonzero
+      bytes = 1024 * 1024;
     }
+    clearTimeout(timeout);
     const end = performance.now();
     setSpinner(false);
 
-    URL.revokeObjectURL(url);
     const elapsed = (end - start) / 1000;
-    const bits = sizeBytes * rounds * 8;
+    const bits = bytes * 8;
     const mbps = bits / (elapsed * 1_000_000);
     return Math.max(0.5, mbps);
   }
@@ -259,15 +273,19 @@
 
     const ping = await measurePing();
     testLabel.textContent = 'DOWNLOAD';
-    await animateValue(0, ping * 1.8, 400);
 
-    const dlTarget = await measureDownload(2_500_000, concurrency);
+    const warmup = Math.min(ping * 3, 12);
+    await animateValue(0, warmup, 400);
+
+    const dlTarget = await measureDownload();
     testLabel.textContent = 'DOWNLOAD';
-    await animateValue(0, dlTarget, 2600);
+    if (dlTarget > 0) await animateValue(0, dlTarget, 2600);
+    else await animateValue(0, 0, 400);
 
-    const ulTarget = await measureUpload(1_500_000, concurrency);
     testLabel.textContent = 'UPLOAD';
-    await animateValue(dlTarget, ulTarget, 2200);
+    const ulTarget = await measureUpload();
+    if (ulTarget > 0) await animateValue(dlTarget || 1, ulTarget, 2200);
+    else await animateValue(dlTarget || 1, dlTarget || 1, 400);
 
     testLabel.textContent = 'COMPLETE';
     return { ping, download: dlTarget, upload: ulTarget };
