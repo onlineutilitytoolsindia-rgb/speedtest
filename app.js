@@ -49,7 +49,7 @@
     const steps = 14;
     for (let i = 0; i <= steps; i++) {
       const angle = MIN_ANGLE + ((MAX_ANGLE - MIN_ANGLE) * i) / steps;
-      const rad = (angle * Math.PI) / 180;
+      const rad = angle * Math.PI / 180;
       const r1 = 96;
       const r2 = i % 2 === 0 ? 84 : 88;
       const x1 = 150 + r1 * Math.cos(rad);
@@ -173,42 +173,76 @@
     }
   }
 
+  function blockReason(err) {
+    if (!err) return '';
+    const msg = String(err.message || err);
+    if (/Failed to fetch|NetworkError|Network request failed|CORS|TypeError/.test(msg)) {
+      return 'Your network may be blocking test servers';
+    }
+    return msg;
+  }
+
   async function measurePing() {
     testLabel.textContent = 'PING';
     setSpinner(true);
     const start = performance.now();
-    try {
-      await timedFetch('https://proof.ovh.net/files/1Mb.dat', { method: 'HEAD', mode: 'cors' }, 5000);
-    } catch (_) {
-      // offline or blocked
+    let err = null;
+    const endpoints = [
+      { url: 'https://proof.ovh.net/files/1Mb.dat', opts: { method: 'HEAD', mode: 'cors' } },
+      { url: 'https://speedtest.tele2.net/1MB.zip', opts: { method: 'HEAD', mode: 'cors' } }
+    ];
+
+    for (const ep of endpoints) {
+      try {
+        await timedFetch(ep.url, ep.opts, 5000);
+        err = null;
+        break;
+      } catch (e) {
+        err = e;
+      }
     }
+
     setSpinner(false);
     const elapsed = performance.now() - start;
-    const ping = Math.max(1, Math.round(elapsed * 10) / 10);
-    return ping;
+    const ping = err ? Math.round(elapsed * 10) / 10 : Math.max(1, Math.round(elapsed * 10) / 10);
+    return { ping, ok: !err, reason: blockReason(err) };
   }
 
   async function measureDownload() {
     testLabel.textContent = 'DOWNLOAD';
     setSpinner(true);
-    const url = 'https://proof.ovh.net/files/10Mb.dat';
+    const sources = [
+      { url: 'https://proof.ovh.net/files/10Mb.dat', bytes: 10485760 },
+      { url: 'https://speedtest.tele2.net/10MB.zip', bytes: 10485760 }
+    ];
+
+    let use = sources[0];
+    let err = null;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), 22000);
     const start = performance.now();
     let bytes = 0;
-    try {
-      const res = await fetch(url, { mode: 'cors', signal: controller.signal });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      bytes = parseInt(res.headers.get('content-length') || '10485760', 10);
-      await res.arrayBuffer();
-    } catch (_) {
-      // fallback to zero but keep flow moving
+
+    for (const src of sources) {
+      try {
+        const res = await timedFetch(src.url, { mode: 'cors', signal: controller.signal }, 22000);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        bytes = parseInt(res.headers.get('content-length') || String(src.bytes), 10);
+        await res.arrayBuffer();
+        use = src;
+        err = null;
+        break;
+      } catch (e) {
+        err = e;
+        continue;
+      }
     }
+
     clearTimeout(timeout);
     setSpinner(false);
     const elapsed = (performance.now() - start) / 1000;
-    const mbps = elapsed > 0 ? (bytes * 8) / (elapsed * 1_000_000) : 0;
-    return Math.max(0.5, mbps);
+    const mbps = elapsed > 0 ? (bytes * 8) / (elapsed * 1000000) : 0;
+    return { download: Math.max(0.5, mbps), ok: !err, reason: err ? blockReason(err) : '' };
   }
 
   async function measureUpload() {
@@ -218,41 +252,47 @@
     crypto.getRandomValues(payload);
     const blob = new Blob([payload]);
     const endpoints = [
-      { url: 'https://httpbin.org/post', method: 'POST', body: blob },
-      { url: 'https://httpbin.org/post', method: 'POST', body: blob },
-      { url: 'https://httpbin.org/put', method: 'PUT', body: blob }
+      { url: 'https://httpbin.org/post', method: 'POST' },
+      { url: 'https://httpbin.org/put', method: 'PUT' }
     ];
+
     const start = performance.now();
     let sentBytes = 0;
+    let err = null;
 
     try {
       let lastError = null;
       for (const ep of endpoints) {
         const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), 12000);
+        const id = setTimeout(() => controller.abort(), 15000);
         try {
-          const res = await timedFetch(ep.url, { method: ep.method, body: ep.body, mode: 'cors' }, 12000);
+          const res = await timedFetch(ep.url, { method: ep.method, body: blob, mode: 'cors' }, 15000);
           clearTimeout(id);
           if (!res.ok) throw new Error('HTTP ' + res.status);
           sentBytes += payload.byteLength;
+          err = null;
           break;
         } catch (e) {
           lastError = e;
+          err = e;
           clearTimeout(id);
           continue;
         }
       }
-      if (!sentBytes) throw lastError || new Error('upload_endpoint_unavailable');
+      if (!sentBytes) {
+        throw lastError || new Error('upload_endpoint_unavailable');
+      }
     } catch (_) {
       sentBytes = 1024 * 1024;
     }
+
     setSpinner(false);
     const elapsed = (performance.now() - start) / 1000;
-    const mbps = elapsed > 0 ? (sentBytes * 8) / (elapsed * 1_000_000) : 0;
-    return Math.max(0.5, mbps);
+    const mbps = elapsed > 0 ? (sentBytes * 8) / (elapsed * 1000000) : 0;
+    return { upload: Math.max(0.5, mbps), ok: !err, reason: err ? blockReason(err) : '' };
   }
 
-  async function animateValue(fromMbps, toMbps, duration) {
+  async function animateValue(fromMbps, toMbps, duration, label) {
     const start = performance.now();
     const step = (now) => {
       const elapsed = now - start;
@@ -260,6 +300,7 @@
       const eased = 1 - Math.pow(1 - t, 3);
       const current = fromMbps + (toMbps - fromMbps) * eased;
       setSpeed(current);
+      testLabel.textContent = label;
       if (t < 1) {
         requestAnimationFrame(step);
       }
@@ -270,27 +311,36 @@
   async function runSpeedTest() {
     const connType = document.getElementById('connType').value;
 
-    const ping = await measurePing();
-    const warmTarget = Math.min(Math.max(2, ping * 2), 14);
-    await animateValue(0, warmTarget, 350);
+    const pingResult = await measurePing();
+    const warmTarget = Math.min(Math.max(2, pingResult.ping * 2), 14);
+    await animateValue(0, warmTarget, 350, 'DOWNLOAD');
 
-    const dlTarget = await measureDownload();
-    if (dlTarget > 0) {
-      await animateValue(0, dlTarget, 2200);
+    const dlResult = await measureDownload();
+    if (dlResult.ok && dlResult.download > 0) {
+      await animateValue(0, dlResult.download, 2200, 'DOWNLOAD');
+    } else if (!dlResult.ok && dlResult.reason) {
+      await animateValue(0, 0, 600, 'DOWNLOAD');
     } else {
-      await animateValue(0, 0.5, 300);
+      await animateValue(0, 0.5, 300, 'DOWNLOAD');
     }
 
-    const ulTarget = await measureUpload();
-    const uploadFrom = dlTarget > 0 ? dlTarget : 0.5;
-    if (ulTarget > 0) {
-      await animateValue(uploadFrom, ulTarget, 2000);
+    const ulResult = await measureUpload();
+    const uploadFrom = dlResult.download && dlResult.download > 0.5 ? dlResult.download : 0.5;
+    if (ulResult.ok && ulResult.upload > 0) {
+      await animateValue(uploadFrom, ulResult.upload, 2000, 'UPLOAD');
+    } else if (!ulResult.ok && ulResult.reason) {
+      await animateValue(uploadFrom, uploadFrom, 300, 'UPLOAD');
     } else {
-      await animateValue(uploadFrom, uploadFrom, 300);
+      await animateValue(uploadFrom, uploadFrom, 300, 'UPLOAD');
     }
 
     testLabel.textContent = 'COMPLETE';
-    return { ping, download: dlTarget, upload: ulTarget };
+    return {
+      ping: pingResult.ping,
+      download: dlResult.download,
+      upload: ulResult.upload,
+      warnings: [pingResult.reason, dlResult.reason, ulResult.reason].filter(Boolean)
+    };
   }
 
   async function startTest() {
@@ -307,10 +357,13 @@
       document.getElementById('dlValue').textContent = result.download.toFixed(2);
       document.getElementById('ulValue').textContent = result.upload.toFixed(2);
       resultsPanel.style.display = 'flex';
+      if (result.warnings && result.warnings.length) {
+        alert('Partially completed: ' + result.warnings.join('; '));
+      }
       addHistoryItem(result);
     } catch (err) {
       console.error(err);
-      alert('Speed test failed. Please try again. If this keeps happening, your network may be blocking the test servers.');
+      alert('Speed test could not complete: ' + (err && err.message ? err.message : 'unknown error'));
     } finally {
       isRunning = false;
       goBtn.disabled = false;
