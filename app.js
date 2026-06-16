@@ -72,7 +72,6 @@
 
   function updateGauge(mbps) {
     const angle = speedToAngle(mbps);
-    const maxArc = CIRCUMFERENCE * ((MAX_ANGLE - MIN_ANGLE) / 360);
     const currentArc = CIRCUMFERENCE * ((angle - MIN_ANGLE) / 360);
     const offset = CIRCUMFERENCE - currentArc;
     gaugeArc.setAttribute('stroke-dashoffset', Math.max(0, offset).toFixed(2));
@@ -161,97 +160,99 @@
     });
   }
 
+  async function timedFetch(url, options = {}, ms = 7000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), ms);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(id);
+      return res;
+    } catch (err) {
+      clearTimeout(id);
+      throw err;
+    }
+  }
+
   async function measurePing() {
     testLabel.textContent = 'PING';
     setSpinner(true);
-    const t0 = performance.now();
-    // Ping is measured via 3 lightweight HEAD requests against a public endpoint
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
+    const start = performance.now();
     try {
-      await fetch('https://proof.ovh.net/files/1Mb.dat', { method: 'HEAD', mode: 'cors', signal: controller.signal });
-    } catch (_) {}
-    clearTimeout(timeout);
-    const t1 = performance.now();
+      await timedFetch('https://proof.ovh.net/files/1Mb.dat', { method: 'HEAD', mode: 'cors' }, 5000);
+    } catch (_) {
+      // offline or blocked
+    }
     setSpinner(false);
-    const roundTrip = t1 - t0;
-    const ping = Math.max(1, Math.round(roundTrip * 10) / 10);
+    const elapsed = performance.now() - start;
+    const ping = Math.max(1, Math.round(elapsed * 10) / 10);
     return ping;
   }
 
   async function measureDownload() {
     testLabel.textContent = 'DOWNLOAD';
     setSpinner(true);
-
-    // Use a known large file from a public test server
-    const base = 'https://proof.ovh.net/files/';
-    const files = ['10Mb.dat', '10Mb.dat', '10Mb.dat', '10Mb.dat'];
+    const url = 'https://proof.ovh.net/files/10Mb.dat';
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
-
     const start = performance.now();
-    let totalBytes = 0;
-
+    let bytes = 0;
     try {
-      await Promise.all(
-        files.map((name) =>
-          fetch(base + name, { mode: 'cors', signal: controller.signal }).then((res) => {
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            totalBytes += parseInt(res.headers.get('content-length') || '10485760', 10);
-            return res.arrayBuffer();
-          })
-        )
-      );
+      const res = await fetch(url, { mode: 'cors', signal: controller.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      bytes = parseInt(res.headers.get('content-length') || '10485760', 10);
+      await res.arrayBuffer();
     } catch (_) {
-      // fallback: smaller payload if network blocks it
+      // fallback to zero but keep flow moving
     }
     clearTimeout(timeout);
-    const end = performance.now();
     setSpinner(false);
-
-    const elapsed = (end - start) / 1000;
-    const bits = totalBytes * 8;
-    const mbps = bits / (elapsed * 1_000_000);
+    const elapsed = (performance.now() - start) / 1000;
+    const mbps = elapsed > 0 ? (bytes * 8) / (elapsed * 1_000_000) : 0;
     return Math.max(0.5, mbps);
   }
 
   async function measureUpload() {
     testLabel.textContent = 'UPLOAD';
     setSpinner(true);
-
-    // Approximate upload using POST to httpbin; measured by bytes+time
-    const endpoint = 'https://httpbin.org/post';
-    const payload = new Uint8Array(2 * 1024 * 1024); // 2 MB
+    const payload = new Uint8Array(2 * 1024 * 1024);
     crypto.getRandomValues(payload);
     const blob = new Blob([payload]);
-
-    const rounds = 3;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const endpoints = [
+      { url: 'https://httpbin.org/post', method: 'POST', body: blob },
+      { url: 'https://httpbin.org/post', method: 'POST', body: blob },
+      { url: 'https://httpbin.org/put', method: 'PUT', body: blob }
+    ];
     const start = performance.now();
-    let bytes = 0;
+    let sentBytes = 0;
 
     try {
-      for (let i = 0; i < rounds; i++) {
-        const res = await fetch(endpoint, { method: 'POST', body: blob, mode: 'cors', signal: controller.signal });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        bytes += payload.byteLength;
+      let lastError = null;
+      for (const ep of endpoints) {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), 12000);
+        try {
+          const res = await timedFetch(ep.url, { method: ep.method, body: ep.body, mode: 'cors' }, 12000);
+          clearTimeout(id);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          sentBytes += payload.byteLength;
+          break;
+        } catch (e) {
+          lastError = e;
+          clearTimeout(id);
+          continue;
+        }
       }
+      if (!sentBytes) throw lastError || new Error('upload_endpoint_unavailable');
     } catch (_) {
-      // fallback: keep small nonzero
-      bytes = 1024 * 1024;
+      sentBytes = 1024 * 1024;
     }
-    clearTimeout(timeout);
-    const end = performance.now();
     setSpinner(false);
-
-    const elapsed = (end - start) / 1000;
-    const bits = bytes * 8;
-    const mbps = bits / (elapsed * 1_000_000);
+    const elapsed = (performance.now() - start) / 1000;
+    const mbps = elapsed > 0 ? (sentBytes * 8) / (elapsed * 1_000_000) : 0;
     return Math.max(0.5, mbps);
   }
 
-  async function animateValue(fromMbps, toMbps, duration, labelFn) {
+  async function animateValue(fromMbps, toMbps, duration) {
     const start = performance.now();
     const step = (now) => {
       const elapsed = now - start;
@@ -259,7 +260,6 @@
       const eased = 1 - Math.pow(1 - t, 3);
       const current = fromMbps + (toMbps - fromMbps) * eased;
       setSpeed(current);
-      if (labelFn) labelFn(current);
       if (t < 1) {
         requestAnimationFrame(step);
       }
@@ -269,23 +269,25 @@
 
   async function runSpeedTest() {
     const connType = document.getElementById('connType').value;
-    const concurrency = connType === 'multi' ? 'multi' : 'single';
 
     const ping = await measurePing();
-    testLabel.textContent = 'DOWNLOAD';
-
-    const warmup = Math.min(ping * 3, 12);
-    await animateValue(0, warmup, 400);
+    const warmTarget = Math.min(Math.max(2, ping * 2), 14);
+    await animateValue(0, warmTarget, 350);
 
     const dlTarget = await measureDownload();
-    testLabel.textContent = 'DOWNLOAD';
-    if (dlTarget > 0) await animateValue(0, dlTarget, 2600);
-    else await animateValue(0, 0, 400);
+    if (dlTarget > 0) {
+      await animateValue(0, dlTarget, 2200);
+    } else {
+      await animateValue(0, 0.5, 300);
+    }
 
-    testLabel.textContent = 'UPLOAD';
     const ulTarget = await measureUpload();
-    if (ulTarget > 0) await animateValue(dlTarget || 1, ulTarget, 2200);
-    else await animateValue(dlTarget || 1, dlTarget || 1, 400);
+    const uploadFrom = dlTarget > 0 ? dlTarget : 0.5;
+    if (ulTarget > 0) {
+      await animateValue(uploadFrom, ulTarget, 2000);
+    } else {
+      await animateValue(uploadFrom, uploadFrom, 300);
+    }
 
     testLabel.textContent = 'COMPLETE';
     return { ping, download: dlTarget, upload: ulTarget };
@@ -299,7 +301,6 @@
     historyPanel.style.display = 'none';
     resetGauge();
     goBtn.textContent = 'TESTING...';
-
     try {
       const result = await runSpeedTest();
       document.getElementById('pingValue').textContent = result.ping.toFixed(2);
@@ -309,7 +310,7 @@
       addHistoryItem(result);
     } catch (err) {
       console.error(err);
-      alert('Speed test failed. Please try again.');
+      alert('Speed test failed. Please try again. If this keeps happening, your network may be blocking the test servers.');
     } finally {
       isRunning = false;
       goBtn.disabled = false;

@@ -94,6 +94,29 @@ body {
   margin-top: 4px;
 }
 
+.status-row {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.status-pill {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: #8e8eaa;
+}
+
+.status-ping.active { color: #4e0eff; border-color: #4e0eff; background: rgba(78,14,255,0.08); }
+.status-dl.active { color: #ff3b5c; border-color: #ff3b5c; background: rgba(255,59,92,0.08); }
+.status-ul.active { color: #00c2ff; border-color: #00c2ff; background: rgba(0,194,255,0.08); }
+
 .spinner-ring {
   position: absolute;
   top: -12px;
